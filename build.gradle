@@ -1,0 +1,146 @@
+plugins {
+    id 'org.jetbrains.kotlin.jvm' version "$kotlin_version"
+    id 'com.adarshr.test-logger' version "$testlogger_version"
+    id "com.github.ben-manes.versions" version "$versions_version"
+    id "nebula.release" version "$nebula_version"
+    id "jacoco"
+}
+
+allprojects {
+    repositories {
+        jcenter()
+    }
+    group = "it.justwrote"
+}
+
+subprojects {
+    apply plugin: 'kotlin'
+    apply plugin: 'com.adarshr.test-logger'
+    apply plugin: 'jacoco'
+
+    compileKotlin {
+        kotlinOptions.jvmTarget = "1.8"
+    }
+
+    compileTestKotlin {
+        kotlinOptions.jvmTarget = "1.8"
+    }
+
+    test {
+        useJUnitPlatform()
+        systemProperties 'user.language': 'en'
+        testLogging {
+            outputs.upToDateWhen { false }
+            showStandardStreams = true
+        }
+    }
+
+    testlogger {
+        theme 'mocha-parallel'
+        showStackTraces true
+        showFullStackTraces true
+        showCauses true
+        slowThreshold 2000
+        showSimpleNames true
+        showStandardStreams true
+    }
+
+    jacoco {
+        toolVersion = "$jacoco_version"
+    }
+
+    jacocoTestReport {
+        reports {
+            xml.enabled = true
+            html.enabled = true
+            csv.enabled = false
+
+            xml.destination file("${buildDir}/reports/jacoco/test/jacocoTestReport.xml")
+            html.destination file("${buildDir}/reports/jacoco/test/html")
+        }
+
+    }
+
+    jacocoTestCoverageVerification {
+        violationRules {
+            rule {
+                limit {
+                    minimum = 0.9
+                }
+            }
+        }
+    }
+
+    check.dependsOn jacocoTestCoverageVerification
+    test.finalizedBy jacocoTestReport
+
+    task testJar(type: Jar) {
+        classifier "test"
+        from sourceSets.test.output
+    }
+
+    configurations {
+        testArtifacts.extendsFrom testRuntime
+    }
+
+    artifacts {
+        testArtifacts testJar
+    }
+}
+
+project(':kjob-example') {
+    dependencies {
+        implementation project(":kjob-core")
+        implementation project(":kjob-mongo")
+        implementation project(":kjob-inmem")
+
+        implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutines_version"
+        implementation "ch.qos.logback:logback-classic:$logback_version"
+    }
+}
+
+project(':kjob-mongo') {
+    apply plugin: "published"
+    dependencies {
+        implementation project(":kjob-core")
+        implementation "org.mongodb:mongodb-driver-reactivestreams:$mongo_version"
+        implementation "org.jetbrains.kotlinx:kotlinx-coroutines-reactive:$coroutines_version"
+
+        testImplementation "io.reactivex.rxjava2:rxkotlin:$rx_version"
+        testImplementation "io.kotest:kotest-runner-junit5:$kotest_version"
+        testImplementation "io.kotest:kotest-assertions-core:$kotest_version"
+        testImplementation "de.flapdoodle.embed:de.flapdoodle.embed.mongo:$embed_mongo_version"
+        testImplementation "io.mockk:mockk:$mockk_version"
+        testImplementation project(path: ":kjob-core", configuration: "testArtifacts")
+
+        testRuntimeOnly "ch.qos.logback:logback-classic:$logback_version"
+    }
+}
+
+project(':kjob-inmem') {
+    apply plugin: "published"
+    dependencies {
+        implementation project(":kjob-core")
+        implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutines_version"
+
+        testImplementation "io.kotest:kotest-runner-junit5:$kotest_version"
+        testImplementation "io.kotest:kotest-assertions-core:$kotest_version"
+        testImplementation "io.mockk:mockk:$mockk_version"
+        testImplementation project(path: ":kjob-core", configuration: "testArtifacts")
+
+        testRuntimeOnly "ch.qos.logback:logback-classic:$logback_version"
+    }
+}
+
+project(':kjob-core') {
+    apply plugin: "published"
+    dependencies {
+        implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutines_version"
+        api "org.slf4j:slf4j-api:$slf4j_version"
+
+        testImplementation "io.kotest:kotest-runner-junit5:$kotest_version"
+        testImplementation "io.kotest:kotest-assertions-core:$kotest_version"
+        testImplementation "io.mockk:mockk:$mockk_version"
+        testRuntimeOnly "ch.qos.logback:logback-classic:$logback_version"
+    }
+}

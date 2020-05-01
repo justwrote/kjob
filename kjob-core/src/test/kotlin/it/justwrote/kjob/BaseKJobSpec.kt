@@ -1,0 +1,162 @@
+package it.justwrote.kjob
+
+import io.kotest.assertions.throwables.shouldThrowMessage
+import io.kotest.core.spec.autoClose
+import io.kotest.core.spec.style.ShouldSpec
+import io.kotest.matchers.shouldBe
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.mockk
+import it.justwrote.kjob.internal.scheduler.js
+import it.justwrote.kjob.internal.scheduler.sj
+import it.justwrote.kjob.job.JobStatus
+import it.justwrote.kjob.job.Lock
+import it.justwrote.kjob.repository.JobRepository
+import it.justwrote.kjob.repository.LockRepository
+import it.justwrote.kjob.utils.waitSomeTime
+import kotlinx.coroutines.flow.emptyFlow
+import java.time.Instant
+import java.util.concurrent.CountDownLatch
+
+class BaseKJobSpec : ShouldSpec() {
+
+    object TestJob : Job("test-job") {
+        val start = integer("start").nullable()
+        val end = integer("end")
+
+        // define all possible types
+        val x1 = integer("x1")
+        val x2 = double("x2")
+        val x3 = long("x3")
+        val x4 = bool("x4")
+        val x5 = string("x5")
+
+        val y1 = integerList("y1")
+        val y2 = doubleList("y2")
+        val y3 = longList("y3")
+        val y4 = boolList("y4")
+        val y5 = stringList("y5")
+
+    }
+
+    val jobRepoMock = mockk<JobRepository>()
+    val lockRepoMock = mockk<LockRepository>()
+
+    private val config = BaseKJob.Configuration().apply {
+    }
+
+    private fun newTestee() = autoClose(object : BaseKJob<BaseKJob.Configuration>(config), AutoCloseable {
+        override val jobRepository: JobRepository = jobRepoMock
+        override val lockRepository: LockRepository = lockRepoMock
+        override val millis: Long = 10
+        override fun close() {
+            shutdown()
+        }
+    })
+
+    init {
+        should("execute a new job as expected") {
+            val map = mapOf(
+                    "end" to 3,
+                    "x1" to 1,
+                    "x2" to 1.2,
+                    "x3" to 123L,
+                    "x4" to true,
+                    "x5" to "test",
+                    "y1" to listOf(1, 2, 3),
+                    "y2" to listOf(1.2, 3.4, 5.6),
+                    "y3" to listOf(1L, 2L, 3L),
+                    "y4" to listOf(true, false, true),
+                    "y5" to listOf("a", "b", "c")
+            )
+            val settings = js("my-test-id", props = map)
+            val sj = sj(settings = settings)
+            val testee = newTestee()
+            coEvery { lockRepoMock.ping(testee.id) } returns Lock(testee.id, Instant.now())
+            coEvery { jobRepoMock.exist("my-test-id") } returns false
+            coEvery { jobRepoMock.findNext(emptySet(), setOf(JobStatus.RUNNING, JobStatus.ERROR), 50) } returns emptyFlow()
+            coEvery { jobRepoMock.save(settings) } returns sj
+            coEvery { jobRepoMock.update(sj.id, null, testee.id, JobStatus.RUNNING, null, 0) } returns true
+            coEvery { jobRepoMock.findNextOne(setOf("test-job"), setOf(JobStatus.CREATED)) } returns sj andThen null
+            coEvery { jobRepoMock.startProgress(sj.id) } returns true
+            coEvery { jobRepoMock.setProgressMax(sj.id, 4) } returns true
+            coEvery { jobRepoMock.stepProgress(sj.id) } returns true
+            coEvery { jobRepoMock.completeProgress(sj.id) } returns true
+            coEvery { jobRepoMock.get(sj.id) } returns sj
+            coEvery { jobRepoMock.update(sj.id, testee.id, null, JobStatus.COMPLETE, null, 1) } returns true
+            testee.start()
+            testee.register(TestJob) {
+                execute {
+                    props[it.x1] shouldBe 1
+                    props[it.x2] shouldBe 1.2
+                    props[it.x3] shouldBe 123
+                    props[it.x4] shouldBe true
+                    props[it.x5] shouldBe "test"
+
+                    props[it.y1] shouldBe listOf(1, 2, 3)
+                    props[it.y2] shouldBe listOf(1.2, 3.4, 5.6)
+                    props[it.y3] shouldBe listOf(1L, 2L, 3L)
+                    props[it.y4] shouldBe listOf(true, false, true)
+                    props[it.y5] shouldBe listOf("a", "b", "c")
+
+                    val start = props[it.start] ?: 0
+                    val end = props[it.end]
+                    setInitialMax(end + 1)
+                    for (i in start..end) {
+                        step()
+                    }
+                }
+            }
+            testee.schedule(TestJob) {
+                jobId = "my-test-id"
+                props[it.end] = 3
+
+                props[it.x1] = 1
+                props[it.x2] = 1.2
+                props[it.x3] = 123L
+                props[it.x4] = true
+                props[it.x5] = "test"
+
+                props[it.y1] = listOf(1, 2, 3)
+                props[it.y2] = listOf(1.2, 3.4, 5.6)
+                props[it.y3] = listOf(1L, 2L, 3L)
+                props[it.y4] = listOf(true, false, true)
+                props[it.y5] = listOf("a", "b", "c")
+            }
+            coVerify(timeout = 200, exactly = 4) { jobRepoMock.stepProgress(sj.id) }
+            coVerify(timeout = 200) { jobRepoMock.update(sj.id, testee.id, null, JobStatus.COMPLETE, null, 1) }
+        }
+
+        should("fail to schedule job if the same id has already been used") {
+            val settings = js("my-test-id")
+            val sj = sj(settings = settings)
+            val testee = newTestee()
+            coEvery { lockRepoMock.ping(testee.id) } returns Lock(testee.id, Instant.now())
+            coEvery { jobRepoMock.exist("my-test-id") } returns true
+            coEvery { jobRepoMock.findNext(emptySet(), setOf(JobStatus.RUNNING, JobStatus.ERROR), 50) } returns emptyFlow()
+            coEvery { jobRepoMock.findNextOne(setOf("test-job"), setOf(JobStatus.CREATED)) } returns sj andThen null
+            testee.start()
+            val latch = CountDownLatch(1)
+            testee.register(TestJob) {
+                execute {
+                    latch.countDown()
+                }
+            }
+            shouldThrowMessage("Job 'test-job' with id 'my-test-id' has already been scheduled.") {
+                testee.schedule(TestJob) {
+                    jobId = "my-test-id"
+                }
+            }
+
+            latch.waitSomeTime(50) shouldBe false
+        }
+
+        should("not allow to start multiple times") {
+            val testee = newTestee()
+            testee.start()
+            shouldThrowMessage("kjob has already been started") {
+                testee.start()
+            }
+        }
+    }
+}
