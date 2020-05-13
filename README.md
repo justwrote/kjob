@@ -1,7 +1,8 @@
 # kjob
 
 [![Bintray](https://img.shields.io/badge/dynamic/json.svg?label=latest%20release&url=https%3A%2F%2Fapi.bintray.com%2F%2Fpackages%2Fjustwrote%2Fmaven%2Fkjob-core%2Fversions%2F_latest&query=name&colorB=328998&style=flat)](https://bintray.com/justwrote/maven/kjob-core)
-![GitHub Build Status](https://img.shields.io/github/workflow/status/justwrote/kjob/CI/master?style=flat)
+[![GitHub Build Status](https://img.shields.io/github/workflow/status/justwrote/kjob/CI/master?style=flat)](https://github.com/justwrote/kjob/actions?query=workflow%3ACI)
+[![Coverage Status](https://coveralls.io/repos/github/justwrote/kjob/badge.svg)](https://coveralls.io/github/justwrote/kjob)
 
 A coroutine based persistent background scheduler written in Kotlin.
 
