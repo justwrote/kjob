@@ -4,6 +4,7 @@ plugins {
     id "com.github.ben-manes.versions" version "$versions_version"
     id "nebula.release" version "$nebula_version"
     id "jacoco"
+    id 'com.github.kt3k.coveralls' version "2.10.1"
 }
 
 allprojects {
@@ -16,6 +17,7 @@ allprojects {
 subprojects {
     apply plugin: 'kotlin'
     apply plugin: 'com.adarshr.test-logger'
+    apply plugin: 'com.github.kt3k.coveralls'
     apply plugin: 'jacoco'
 
     compileKotlin {
@@ -51,11 +53,11 @@ subprojects {
 
     jacocoTestReport {
         reports {
-            xml.enabled = true
+            xml.enabled = false
             html.enabled = true
             csv.enabled = false
 
-            xml.destination file("${buildDir}/reports/jacoco/test/jacocoTestReport.xml")
+//            xml.destination file("${buildDir}/reports/jacoco/test/jacocoTestReport.xml")
             html.destination file("${buildDir}/reports/jacoco/test/html")
         }
 
@@ -85,6 +87,26 @@ subprojects {
 
     artifacts {
         testArtifacts testJar
+    }
+}
+
+coveralls {
+    sourceDirs = files(subprojects.sourceSets.main.allSource.srcDirs).files.absolutePath
+    jacocoReportPath = file("${buildDir}/reports/jacoco/report.xml")
+}
+
+task codeCoverageReport(type: JacocoReport) {
+    executionData fileTree(project.rootDir.absolutePath).include("**/build/jacoco/*.exec")
+
+    subprojects.each {
+        sourceSets it.sourceSets.main
+    }
+
+    reports {
+        xml.enabled true
+        xml.destination file("${buildDir}/reports/jacoco/report.xml")
+        html.enabled false
+        csv.enabled false
     }
 }
 
