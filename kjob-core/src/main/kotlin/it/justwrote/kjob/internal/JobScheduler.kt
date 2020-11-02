@@ -7,7 +7,7 @@ import it.justwrote.kjob.job.ScheduledJob
 import it.justwrote.kjob.repository.JobRepository
 import org.slf4j.LoggerFactory
 
-internal interface JobScheduler {
+interface JobScheduler {
     suspend fun <J : Job> schedule(job: J, block: ScheduleContext<J>.(J) -> Unit = {}): ScheduledJob
 }
 

@@ -1,5 +1,5 @@
 package it.justwrote.kjob
 
-interface KJobFactory<out Job : KJob, Config : KJob.Configuration> {
-    fun create(configure: Config.() -> Unit): Job
+interface KJobFactory<Kj : KJob, KjConfig : KJob.Configuration> {
+    fun create(configure: KjConfig.() -> Unit): KJob
 }
