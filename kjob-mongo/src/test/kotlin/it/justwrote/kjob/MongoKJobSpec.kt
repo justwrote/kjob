@@ -6,7 +6,10 @@ import io.kotest.matchers.shouldBe
 import io.kotest.provided.ProjectConfig
 import it.justwrote.kjob.utils.waitSomeTime
 import java.util.concurrent.CountDownLatch
+import kotlin.time.ExperimentalTime
+import kotlin.time.milliseconds
 
+@ExperimentalTime
 class MongoKJobSpec : ShouldSpec() {
     private val mongoClient = ProjectConfig.newMongoClient()
 
@@ -27,7 +30,7 @@ class MongoKJobSpec : ShouldSpec() {
             }
             val testee = newTestee(config)
             testee.start()
-            val latch = CountDownLatch(1)
+            val latch = CountDownLatch(2)
             testee.register(TestJob) {
                 execute {
                     latch.countDown()
@@ -35,6 +38,7 @@ class MongoKJobSpec : ShouldSpec() {
             }
 
             testee.schedule(TestJob)
+            testee.schedule(TestJob, 200.milliseconds)
 
             latch.waitSomeTime(1100) shouldBe true
         }

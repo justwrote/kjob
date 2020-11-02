@@ -43,6 +43,7 @@ internal class MongoJobRepository(
             Document()
                     .append(ScheduledJobStructure.ID.key, keyOf(value))
                     .append(ScheduledJobStructure.STATUS.key, value.status.name)
+                    .append(ScheduledJobStructure.RUN_AT.key, value.runAt)
                     .append(ScheduledJobStructure.RETRIES.key, value.retries)
                     .append(ScheduledJobStructure.KJOB_ID.key, value.kjobId)
                     .append(ScheduledJobStructure.CREATED_AT.key, value.createdAt)
@@ -67,6 +68,7 @@ internal class MongoJobRepository(
             ScheduledJob(
                     document.getObjectId(ScheduledJobStructure.ID.key).toHexString(),
                     JobStatus.valueOf(document.getString(ScheduledJobStructure.STATUS.key)),
+                    document.getDate(ScheduledJobStructure.RUN_AT.key)?.toInstant(),
                     document.getString(ScheduledJobStructure.STATUS_CAUSE.key),
                     document.getInteger(ScheduledJobStructure.RETRIES.key, 0),
                     document.get(ScheduledJobStructure.KJOB_ID.key, UUID::class.java),
@@ -102,9 +104,9 @@ internal class MongoJobRepository(
 
     override suspend fun get(id: String): ScheduledJob? = findOne(ObjectId(id))
 
-    override suspend fun save(jobSettings: JobSettings): ScheduledJob {
+    override suspend fun save(jobSettings: JobSettings, runAt: Instant?): ScheduledJob {
         val now = Instant.now(clock)
-        val sj = ScheduledJob(ObjectId.get().toHexString(), JobStatus.CREATED, null, 0, null, now, now, jobSettings, JobProgress(0))
+        val sj = ScheduledJob(ObjectId.get().toHexString(), JobStatus.CREATED, runAt, null, 0, null, now, now, jobSettings, JobProgress(0))
         return create(sj)
     }
 

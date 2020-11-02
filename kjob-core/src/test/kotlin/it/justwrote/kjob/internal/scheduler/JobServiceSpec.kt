@@ -8,7 +8,8 @@ import it.justwrote.kjob.internal.JobRegister
 import it.justwrote.kjob.internal.RunnableJob
 import it.justwrote.kjob.job.JobExecutionType
 import it.justwrote.kjob.job.JobSettings
-import it.justwrote.kjob.job.JobStatus
+import it.justwrote.kjob.job.JobStatus.CREATED
+import it.justwrote.kjob.job.JobStatus.SCHEDULED
 import it.justwrote.kjob.job.ScheduledJob
 import it.justwrote.kjob.repository.JobRepository
 import kotlinx.coroutines.Dispatchers
@@ -57,7 +58,7 @@ class JobServiceSpec : ShouldSpec() {
             every { jobRegisterMock.jobs(JobExecutionType.BLOCKING) } returns setOf(job1.name)
             every { jobExecutorMock.canExecute(JobExecutionType.BLOCKING) } returns true
             every { jobExecutorMock.canExecute(JobExecutionType.NON_BLOCKING) } returns false
-            coEvery { jobRepoMock.findNextOne(any(), any()) } returns null
+            coEvery { jobRepoMock.findNextOne(setOf("test-job-1"), setOf(CREATED)) } returns null
 
             val testee = JobService(
                     newScheduler(),
@@ -74,7 +75,7 @@ class JobServiceSpec : ShouldSpec() {
             verify(timeout = 50) { jobExecutorMock.canExecute(JobExecutionType.BLOCKING) }
             verify(timeout = 50) { jobExecutorMock.canExecute(JobExecutionType.NON_BLOCKING) }
             verify(timeout = 50) { jobRegisterMock.jobs(JobExecutionType.BLOCKING) }
-            coVerify(timeout = 50) { jobRepoMock.findNextOne(any(), any()) }
+            coVerify(timeout = 50) { jobRepoMock.findNextOne(setOf("test-job-1"), setOf(CREATED)) }
         }
 
         should("find next job and start execution") {
@@ -97,8 +98,8 @@ class JobServiceSpec : ShouldSpec() {
             every { scheduledJobMock.id } returns "random-id"
             every { scheduledJobMock.settings } returns js(id = "my-id", name = job1.name)
             every { scheduledJobMock.retries } returns 0
-            coEvery { jobRepoMock.findNextOne(setOf(job1.name), setOf(JobStatus.CREATED)) } returns scheduledJobMock
-            coEvery { jobRepoMock.update("random-id", null, kjobId, JobStatus.RUNNING, null, 0) } returns true
+            coEvery { jobRepoMock.findNextOne(setOf(job1.name), setOf(CREATED)) } returns scheduledJobMock
+            coEvery { jobRepoMock.update("random-id", null, kjobId, SCHEDULED, null, 0) } returns true
             every { jobExecutorMock.canExecute(JobExecutionType.BLOCKING) } returns true
             every { jobExecutorMock.canExecute(JobExecutionType.NON_BLOCKING) } returns false
             every { jobExecutorMock.execute(runnableJobMock, scheduledJobMock, jobRepoMock) } just Runs
@@ -107,7 +108,7 @@ class JobServiceSpec : ShouldSpec() {
 
             testee.start()
 
-            coVerify(timeout = 50) { jobRepoMock.findNextOne(setOf(job1.name), setOf(JobStatus.CREATED)) }
+            coVerify(timeout = 50) { jobRepoMock.findNextOne(setOf(job1.name), setOf(CREATED)) }
             verify(timeout = 50, inverse = true) { jobRegisterMock.jobs(JobExecutionType.NON_BLOCKING) }
 
 
@@ -142,8 +143,8 @@ class JobServiceSpec : ShouldSpec() {
             every { scheduledJobMock.id } returns "random-id"
             every { scheduledJobMock.settings } returns JobSettings("my-id", job1.name, emptyMap())
             every { scheduledJobMock.retries } returns 0
-            coEvery { jobRepoMock.findNextOne(setOf(job1.name), setOf(JobStatus.CREATED)) } returns scheduledJobMock
-            coEvery { jobRepoMock.update("random-id", null, kjobId, JobStatus.RUNNING, null, 0) } returns false
+            coEvery { jobRepoMock.findNextOne(setOf(job1.name), setOf(CREATED)) } returns scheduledJobMock
+            coEvery { jobRepoMock.update("random-id", null, kjobId, SCHEDULED, null, 0) } returns false
             every { jobExecutorMock.canExecute(JobExecutionType.BLOCKING) } returns false
             every { jobExecutorMock.canExecute(JobExecutionType.NON_BLOCKING) } returns true
             every { jobRegisterMock.jobs(JobExecutionType.NON_BLOCKING) } returns setOf(job1.name)
@@ -151,7 +152,7 @@ class JobServiceSpec : ShouldSpec() {
 
             testee.start()
 
-            coVerify(timeout = 50) { jobRepoMock.findNextOne(setOf(job1.name), setOf(JobStatus.CREATED)) }
+            coVerify(timeout = 50) { jobRepoMock.findNextOne(setOf(job1.name), setOf(CREATED)) }
 
             verify(timeout = 25, inverse = true) { jobExecutorMock.execute(runnableJobMock, scheduledJobMock, jobRepoMock) }
             verify(timeout = 25, inverse = true) { jobRegisterMock.jobs(JobExecutionType.BLOCKING) }

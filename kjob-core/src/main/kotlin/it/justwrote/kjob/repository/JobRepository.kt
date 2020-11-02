@@ -5,13 +5,14 @@ import it.justwrote.kjob.job.JobStatus
 import it.justwrote.kjob.job.ScheduledJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.singleOrNull
+import java.time.Instant
 import java.util.*
 
 interface JobRepository {
 
     suspend fun exist(jobId: String): Boolean
 
-    suspend fun save(jobSettings: JobSettings): ScheduledJob
+    suspend fun save(jobSettings: JobSettings, runAt: Instant?): ScheduledJob
 
     suspend fun get(id: String): ScheduledJob?
 

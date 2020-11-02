@@ -1,17 +1,17 @@
 package it.justwrote.kjob.internal
 
-import it.justwrote.kjob.Job
+import it.justwrote.kjob.BaseJob
 import it.justwrote.kjob.KJob
 import it.justwrote.kjob.dsl.*
 import it.justwrote.kjob.job.JobExecutionType
 
-internal class DefaultRunnableJob<J : Job>(
-        override val name: J,
+class DefaultRunnableJob<J : BaseJob>(
+        override val job: J,
         configuration: KJob.Configuration,
-        block: RegisterContext<J>.(J) -> KJobFunctions<J>
+        block: JobRegisterContext<J, JobContext<J>>.(J) -> KJobFunctions<J, JobContext<J>>
 ) : RunnableJob {
-    private val rjc = RegisterContext<J>(configuration)
-    private val sjc = block(rjc, name)
+    private val rjc = JobRegisterContext<J, JobContext<J>>(configuration)
+    private val sjc = block(rjc, job)
 
     override val executionType: JobExecutionType = rjc.executionType
     override val maxRetries: Int = rjc.maxRetries

@@ -1,6 +1,5 @@
 package it.justwrote.kjob
 
-import io.kotest.core.spec.autoClose
 import io.kotest.core.spec.style.ShouldSpec
 import io.kotest.data.forAll
 import io.kotest.data.row

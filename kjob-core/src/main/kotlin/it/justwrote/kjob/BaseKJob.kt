@@ -1,8 +1,6 @@
 package it.justwrote.kjob
 
-import it.justwrote.kjob.dsl.KJobFunctions
-import it.justwrote.kjob.dsl.RegisterContext
-import it.justwrote.kjob.dsl.ScheduleContext
+import it.justwrote.kjob.dsl.*
 import it.justwrote.kjob.extension.Extension
 import it.justwrote.kjob.extension.ExtensionId
 import it.justwrote.kjob.extension.ExtensionModule
@@ -10,11 +8,17 @@ import it.justwrote.kjob.internal.*
 import it.justwrote.kjob.internal.scheduler.JobCleanupScheduler
 import it.justwrote.kjob.internal.scheduler.JobService
 import it.justwrote.kjob.internal.scheduler.KeepAliveScheduler
+import it.justwrote.kjob.job.JobSettings
 import it.justwrote.kjob.repository.JobRepository
 import it.justwrote.kjob.repository.LockRepository
 import kotlinx.coroutines.*
 import org.slf4j.LoggerFactory
+import java.time.Clock
+import java.time.Instant
 import java.util.*
+import kotlin.time.Duration
+import kotlin.time.ExperimentalTime
+import kotlin.time.toJavaDuration
 
 abstract class BaseKJob<Config : BaseKJob.Configuration>(val config: Config) : KJob {
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -27,6 +31,7 @@ abstract class BaseKJob<Config : BaseKJob.Configuration>(val config: Config) : K
 
     internal open val millis: Long = 1000 // allow override for testing
 
+    open val clock: Clock = Clock.systemUTC() // meant only for testing
     val id: UUID = UUID.randomUUID()
 
     open class Configuration : KJob.Configuration() {
@@ -82,8 +87,8 @@ abstract class BaseKJob<Config : BaseKJob.Configuration>(val config: Config) : K
 
     internal open val jobExecutors: JobExecutors by lazy { DefaultJobExecutors(config) }
     internal open val jobScheduler: JobScheduler by lazy { DefaultJobScheduler(jobRepository) }
-    internal open val jobRegister: JobRegister by lazy { DefaultJobRegister(config) }
-    internal open val jobExecutor: JobExecutor by lazy { DefaultJobExecutor(id, jobExecutors.dispatchers, kjobScope.coroutineContext) }
+    internal open val jobRegister: JobRegister by lazy { DefaultJobRegister() }
+    internal open val jobExecutor: JobExecutor by lazy { DefaultJobExecutor(id, jobExecutors.dispatchers, clock, kjobScope.coroutineContext) }
 
     private val kjobScope: CoroutineScope by lazy {
         CoroutineScope(SupervisorJob() + jobExecutors.executorService.asCoroutineDispatcher() + CoroutineName("kjob[$id]") + handler)
@@ -129,13 +134,35 @@ abstract class BaseKJob<Config : BaseKJob.Configuration>(val config: Config) : K
         return this
     }
 
-    override fun <J : Job> register(job: J, block: RegisterContext<J>.(J) -> KJobFunctions<J>): KJob {
-        jobRegister.register(job, block)
+    @Suppress("UNCHECKED_CAST")
+    override fun <J : Job> register(job: J, block: JobRegisterContext<J, JobContextWithProps<J>>.(J) -> KJobFunctions<J, JobContextWithProps<J>>): KJob {
+        val runnableJob = DefaultRunnableJob(job, config, block as JobRegisterContext<J, JobContext<J>>.(J) -> KJobFunctions<J, JobContext<J>>)
+        jobRegister.register(runnableJob)
         return this
     }
 
     override suspend fun <J : Job> schedule(job: J, block: ScheduleContext<J>.(J) -> Unit): KJob {
-        jobScheduler.schedule(job, block)
+        val ctx = ScheduleContext<J>()
+        block(ctx, job)
+        val settings = JobSettings(ctx.jobId, job.name, ctx.props.props)
+        jobScheduler.schedule(settings)
+        return this
+    }
+
+    override suspend fun <J : Job> schedule(job: J, delay: java.time.Duration, block: ScheduleContext<J>.(J) -> Unit): KJob {
+        val ctx = ScheduleContext<J>()
+        block(ctx, job)
+        val settings = JobSettings(ctx.jobId, job.name, ctx.props.props)
+        jobScheduler.schedule(settings, Instant.now(clock).plus(delay))
+        return this
+    }
+
+    @ExperimentalTime
+    override suspend fun <J : Job> schedule(job: J, delay: Duration, block: ScheduleContext<J>.(J) -> Unit): KJob {
+        val ctx = ScheduleContext<J>()
+        block(ctx, job)
+        val settings = JobSettings(ctx.jobId, job.name, ctx.props.props)
+        jobScheduler.schedule(settings, Instant.now(clock).plus(delay.toJavaDuration()))
         return this
     }
 

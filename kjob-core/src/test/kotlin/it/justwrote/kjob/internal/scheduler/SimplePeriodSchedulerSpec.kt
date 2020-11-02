@@ -7,7 +7,7 @@ import it.justwrote.kjob.utils.waitSomeTime
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ScheduledExecutorService
 
-class SimpleSchedulerSpec : ShouldSpec() {
+class SimplePeriodSchedulerSpec : ShouldSpec() {
 
     class Flaky(var successLatch: CountDownLatch = CountDownLatch(0), var errorLatch: CountDownLatch = CountDownLatch(0), var isFlaky: Boolean = false) {
         fun run(): Unit {
@@ -29,7 +29,7 @@ class SimpleSchedulerSpec : ShouldSpec() {
         }
     }
 
-    private fun newTestee(flaky: Flaky, scheduler: ScheduledExecutorService) = object : SimpleScheduler(scheduler, 30) {
+    private fun newTestee(flaky: Flaky, scheduler: ScheduledExecutorService) = object : SimplePeriodScheduler(scheduler, 30) {
         fun start() = run { flaky.run() }
     }
 

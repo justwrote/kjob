@@ -12,6 +12,9 @@ import io.mockk.mockk
 import it.justwrote.kjob.Job
 import it.justwrote.kjob.KJob
 import it.justwrote.kjob.dsl.JobContext
+import it.justwrote.kjob.dsl.JobContextWithProps
+import it.justwrote.kjob.dsl.JobRegisterContext
+import it.justwrote.kjob.dsl.KJobFunctions
 import it.justwrote.kjob.job.JobExecutionType
 import it.justwrote.kjob.job.JobProps
 import it.justwrote.kjob.job.ScheduledJob
@@ -29,6 +32,10 @@ class DefaultRunnableJobSpec : ShouldSpec() {
         val prop1 = integer("int-test")
         val prop2 = string("string-test").nullable()
     }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun <J : Job> defaultRunnableJob(job: J, config: KJob.Configuration, block: JobRegisterContext<J, JobContextWithProps<J>>.(J) -> KJobFunctions<J, JobContextWithProps<J>>): DefaultRunnableJob<J> =
+            DefaultRunnableJob(job, config, block as JobRegisterContext<J, JobContext<J>>.(J) -> KJobFunctions<J, JobContext<J>>)
 
     init {
         val sjMock = mockk<ScheduledJob>()
@@ -56,7 +63,7 @@ class DefaultRunnableJobSpec : ShouldSpec() {
                 maxRetries = 12345
             }
             val latch = CountDownLatch(1)
-            val testee = DefaultRunnableJob(TestJob, conf) {
+            val testee = defaultRunnableJob(TestJob, conf) {
                 execute {
                     val prop1 = props[it.prop1]
                     val prop2 = props[it.prop2]
@@ -67,7 +74,7 @@ class DefaultRunnableJobSpec : ShouldSpec() {
             }
             testee.executionType shouldBe JobExecutionType.NON_BLOCKING
             testee.maxRetries shouldBe 12345
-            val result = testee.execute(JobContext<TestJob>(
+            val result = testee.execute(JobContextWithProps<TestJob>(
                     Dispatchers.Unconfined,
                     JobProps(mapOf("int-test" to 3)),
                     sjMock,
@@ -79,20 +86,19 @@ class DefaultRunnableJobSpec : ShouldSpec() {
         }
 
         should("fail to execute job if required props are missing") {
-            val testee = DefaultRunnableJob(TestJob, config) {
+            val testee = defaultRunnableJob(TestJob, config) {
                 execute {
                     println(props[it.prop1])
                 }
             }
-            val result = testee.execute(JobContext<TestJob>(
+            val result = testee.execute(JobContextWithProps<TestJob>(
                     Dispatchers.Unconfined,
                     JobProps(emptyMap()),
                     sjMock,
                     jobRepositoryMock
             ))
-            result.shouldBeTypeOf<JobError> {
-                it.throwable.shouldBeTypeOf<NullPointerException>()
-            }
+            result.shouldBeTypeOf<JobError>()
+            result.throwable.shouldBeTypeOf<NullPointerException>()
         }
 
         should("fail to execute job if job repository is not successful") {
@@ -103,16 +109,16 @@ class DefaultRunnableJobSpec : ShouldSpec() {
                 }
             }
 
-            val result = testee.execute(JobContext<TestJob>(
+            val result = testee.execute(JobContextWithProps<TestJob>(
                     Dispatchers.Unconfined,
                     JobProps(emptyMap()),
                     sjMock,
                     jobRepositoryMock
             ))
 
-            result.shouldBeTypeOf<JobError> {
-                it.throwable.shouldHaveMessage("Failed to start execution.")
-            }
+            result.shouldBeTypeOf<JobError>()
+            result.throwable.shouldHaveMessage("Failed to start execution.")
+
         }
 
         should("fail to complete job if call to job repository is not successful") {
@@ -123,16 +129,16 @@ class DefaultRunnableJobSpec : ShouldSpec() {
                 }
             }
 
-            val result = testee.execute(JobContext<TestJob>(
+            val result = testee.execute(JobContextWithProps<TestJob>(
                     Dispatchers.Unconfined,
                     JobProps(emptyMap()),
                     sjMock,
                     jobRepositoryMock
             ))
 
-            result.shouldBeTypeOf<JobError> {
-                it.throwable.shouldHaveMessage("Failed to complete execution.")
-            }
+            result.shouldBeTypeOf<JobError>()
+            result.throwable.shouldHaveMessage("Failed to complete execution.")
+
         }
 
         should("fail to complete job if call to job repository is not successful #2") {
@@ -143,16 +149,16 @@ class DefaultRunnableJobSpec : ShouldSpec() {
                 }
             }
 
-            val result = testee.execute(JobContext<TestJob>(
+            val result = testee.execute(JobContextWithProps<TestJob>(
                     Dispatchers.Unconfined,
                     JobProps(emptyMap()),
                     sjMock,
                     jobRepositoryMock
             ))
 
-            result.shouldBeTypeOf<JobError> {
-                it.throwable.shouldHaveMessage("Failed to complete execution.")
-            }
+            result.shouldBeTypeOf<JobError>()
+            result.throwable.shouldHaveMessage("Failed to complete execution.")
+
         }
 
         should("execute 'onError' block if execution fails") {
@@ -170,16 +176,16 @@ class DefaultRunnableJobSpec : ShouldSpec() {
                 }
             }
 
-            val result = testee.execute(JobContext<TestJob>(
+            val result = testee.execute(JobContextWithProps<TestJob>(
                     Dispatchers.Unconfined,
                     JobProps(emptyMap()),
                     sjMock,
                     jobRepositoryMock
             ))
 
-            result.shouldBeTypeOf<JobError> {
-                it.throwable.shouldHaveMessage("#test")
-            }
+            result.shouldBeTypeOf<JobError>()
+            result.throwable.shouldHaveMessage("#test")
+
 
             latch.countDown()
         }
@@ -201,7 +207,7 @@ class DefaultRunnableJobSpec : ShouldSpec() {
                 }
             }
 
-            val result = testee.execute(JobContext<TestJob>(
+            val result = testee.execute(JobContextWithProps<TestJob>(
                     Dispatchers.Unconfined,
                     JobProps(emptyMap()),
                     sjMock,
@@ -222,16 +228,16 @@ class DefaultRunnableJobSpec : ShouldSpec() {
                 }
             }
 
-            val result = testee.execute(JobContext<TestJob>(
+            val result = testee.execute(JobContextWithProps<TestJob>(
                     Dispatchers.Unconfined,
                     JobProps(emptyMap()),
                     sjMock,
                     jobRepositoryMock
             ))
 
-            result.shouldBeTypeOf<JobError> {
-                it.throwable.shouldHaveMessage("#test")
-            }
+            result.shouldBeTypeOf<JobError>()
+            result.throwable.shouldHaveMessage("#test")
+
         }
 
         should("handle error in 'onError' block") {
@@ -243,16 +249,16 @@ class DefaultRunnableJobSpec : ShouldSpec() {
                 }
             }
 
-            val result = testee.execute(JobContext<TestJob>(
+            val result = testee.execute(JobContextWithProps<TestJob>(
                     Dispatchers.Unconfined,
                     JobProps(emptyMap()),
                     sjMock,
                     jobRepositoryMock
             ))
 
-            result.shouldBeTypeOf<JobError> {
-                it.throwable.shouldHaveMessage("#test1")
-            }
+            result.shouldBeTypeOf<JobError>()
+            result.throwable.shouldHaveMessage("#test1")
+
         }
     }
 }

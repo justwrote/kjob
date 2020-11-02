@@ -3,7 +3,8 @@ package it.justwrote.kjob.internal.scheduler
 import it.justwrote.kjob.internal.JobExecutor
 import it.justwrote.kjob.internal.JobRegister
 import it.justwrote.kjob.job.JobExecutionType
-import it.justwrote.kjob.job.JobStatus
+import it.justwrote.kjob.job.JobStatus.CREATED
+import it.justwrote.kjob.job.JobStatus.SCHEDULED
 import it.justwrote.kjob.job.ScheduledJob
 import it.justwrote.kjob.repository.JobRepository
 import kotlinx.coroutines.CoroutineScope
@@ -21,30 +22,34 @@ internal class JobService(
         private val jobRegister: JobRegister,
         private val jobExecutor: JobExecutor,
         private val jobRepository: JobRepository
-) : SimpleScheduler(executorService, period), CoroutineScope {
+) : SimplePeriodScheduler(executorService, period), CoroutineScope {
     private val logger = LoggerFactory.getLogger(javaClass)
 
     private suspend fun executeJob(scheduledJob: ScheduledJob): Unit {
         val runnableJob = jobRegister.get(scheduledJob.settings.name)
-        val isMyJob = jobRepository.update(scheduledJob.id, null, id, JobStatus.RUNNING, null, scheduledJob.retries)
+        val isMyJob = jobRepository.update(scheduledJob.id, null, id, SCHEDULED, null, scheduledJob.retries)
         if (isMyJob) {
             jobExecutor.execute(runnableJob, scheduledJob, jobRepository)
         }
     }
 
-    private suspend fun findAndExecuteJob(names: Set<String>) {
+    private suspend fun findAndExecuteJob(names: Set<String>): Boolean {
         if (names.isNotEmpty()) {
-            jobRepository.findNextOne(names, setOf(JobStatus.CREATED))?.let { executeJob(it) }
+            return jobRepository.findNextOne(names, setOf(CREATED))?.let { executeJob(it) } != null
         }
+        return false
     }
 
     private fun tryExecuteJob() {
         launch {
-            if (jobExecutor.canExecute(JobExecutionType.BLOCKING))
-                findAndExecuteJob(jobRegister.jobs(JobExecutionType.BLOCKING))
+            var hasExecutedAJob = false
+            do {
+                if (jobExecutor.canExecute(JobExecutionType.BLOCKING))
+                    hasExecutedAJob = findAndExecuteJob(jobRegister.jobs(JobExecutionType.BLOCKING))
 
-            if (jobExecutor.canExecute(JobExecutionType.NON_BLOCKING))
-                findAndExecuteJob(jobRegister.jobs(JobExecutionType.NON_BLOCKING))
+                if (jobExecutor.canExecute(JobExecutionType.NON_BLOCKING))
+                    hasExecutedAJob = hasExecutedAJob || findAndExecuteJob(jobRegister.jobs(JobExecutionType.NON_BLOCKING))
+            } while (hasExecutedAJob)
         }
     }
 

@@ -4,7 +4,7 @@ plugins {
     id "com.github.ben-manes.versions" version "$versions_version"
     id "nebula.release" version "$nebula_version"
     id "jacoco"
-    id 'com.github.kt3k.coveralls' version "2.10.1"
+    id 'com.github.kt3k.coveralls' version "2.10.2"
 }
 
 allprojects {
@@ -57,7 +57,6 @@ subprojects {
             html.enabled = true
             csv.enabled = false
 
-//            xml.destination file("${buildDir}/reports/jacoco/test/jacocoTestReport.xml")
             html.destination file("${buildDir}/reports/jacoco/test/html")
         }
 
@@ -67,7 +66,7 @@ subprojects {
         violationRules {
             rule {
                 limit {
-                    minimum = 0.9
+                    minimum = 0.8
                 }
             }
         }
@@ -115,13 +114,19 @@ task codeCoverageReport(type: JacocoReport) {
 project(':kjob-example') {
     dependencies {
         implementation project(":kjob-core")
+        implementation project(":kjob-kron")
         implementation project(":kjob-mongo")
         implementation project(":kjob-inmem")
+
+        implementation "com.cronutils:cron-utils:$cronutils_version", {
+            exclude group: "org.slf4j", module: "slf4j-simple"
+        }
 
         implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutines_version"
         implementation "ch.qos.logback:logback-classic:$logback_version"
     }
 }
+
 
 project(':kjob-mongo') {
     apply plugin: "published"
@@ -147,6 +152,26 @@ project(':kjob-inmem') {
         implementation project(":kjob-core")
         implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutines_version"
 
+        testImplementation "io.kotest:kotest-runner-junit5:$kotest_version"
+        testImplementation "io.kotest:kotest-assertions-core:$kotest_version"
+        testImplementation "io.mockk:mockk:$mockk_version"
+        testImplementation project(path: ":kjob-core", configuration: "testArtifacts")
+
+        testRuntimeOnly "ch.qos.logback:logback-classic:$logback_version"
+    }
+}
+
+project(':kjob-kron') {
+    apply plugin: "published"
+    dependencies {
+        implementation project(":kjob-core")
+        implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutines_version"
+        implementation "com.cronutils:cron-utils:$cronutils_version", {
+            exclude group: "org.slf4j", module: "slf4j-simple"
+        }
+        api "org.slf4j:slf4j-api:$slf4j_version"
+
+        testImplementation project(":kjob-inmem")
         testImplementation "io.kotest:kotest-runner-junit5:$kotest_version"
         testImplementation "io.kotest:kotest-assertions-core:$kotest_version"
         testImplementation "io.mockk:mockk:$mockk_version"

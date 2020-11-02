@@ -1,6 +1,6 @@
 package it.justwrote.kjob.internal.scheduler
 
-import it.justwrote.kjob.job.JobStatus
+import it.justwrote.kjob.job.JobStatus.*
 import it.justwrote.kjob.repository.JobRepository
 import it.justwrote.kjob.repository.LockRepository
 import kotlinx.coroutines.flow.collect
@@ -13,11 +13,11 @@ internal class JobCleanupScheduler(
         private val jobRepository: JobRepository,
         private val lockRepository: LockRepository,
         private val limit: Int
-) : SimpleScheduler(executorService, period) {
+) : SimplePeriodScheduler(executorService, period) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
     private suspend fun findAndCleanup() {
-        jobRepository.findNext(emptySet(), setOf(JobStatus.RUNNING, JobStatus.ERROR), limit).collect { job ->
+        jobRepository.findNext(emptySet(), setOf(SCHEDULED, RUNNING, ERROR), limit).collect { job ->
             val isAlive = job.kjobId?.let { lockRepository.exists(it) } ?: false
             if (!isAlive) {
                 val applied = jobRepository.reset(job.id, job.kjobId)

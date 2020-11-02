@@ -6,6 +6,7 @@ import java.util.*
 data class ScheduledJob(
         val id: String,
         val status: JobStatus,
+        val runAt: Instant?,
         val statusMessage: String?,
         val retries: Int,
         val kjobId: UUID?,

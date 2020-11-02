@@ -1,27 +1,41 @@
 package it.justwrote.kjob
 
 import io.kotest.assertions.throwables.shouldThrowMessage
-import io.kotest.core.spec.autoClose
+import io.kotest.core.spec.IsolationMode
 import io.kotest.core.spec.style.ShouldSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import io.mockk.spyk
 import it.justwrote.kjob.extension.BaseExtension
 import it.justwrote.kjob.extension.ExtensionId
 import it.justwrote.kjob.extension.ExtensionModule
+import it.justwrote.kjob.internal.DefaultJobScheduler
+import it.justwrote.kjob.internal.JobScheduler
 import it.justwrote.kjob.internal.scheduler.js
 import it.justwrote.kjob.internal.scheduler.sj
-import it.justwrote.kjob.job.JobStatus
+import it.justwrote.kjob.job.JobStatus.*
 import it.justwrote.kjob.job.Lock
 import it.justwrote.kjob.repository.JobRepository
 import it.justwrote.kjob.repository.LockRepository
+import it.justwrote.kjob.utils.MutableClock
 import it.justwrote.kjob.utils.waitSomeTime
 import kotlinx.coroutines.flow.emptyFlow
+import java.time.Clock
+import java.time.Duration
 import java.time.Instant
+import java.time.ZoneId
 import java.util.concurrent.CountDownLatch
+import kotlin.time.ExperimentalTime
+import kotlin.time.minutes
 
+@ExperimentalTime
 class BaseKJobSpec : ShouldSpec() {
+
+    override fun isolationMode(): IsolationMode? {
+        return IsolationMode.InstancePerTest
+    }
 
     object TestJob : Job("test-job") {
         val start = integer("start").nullable()
@@ -44,6 +58,7 @@ class BaseKJobSpec : ShouldSpec() {
 
     val jobRepoMock = mockk<JobRepository>()
     val lockRepoMock = mockk<LockRepository>()
+    val jobSchedulerMock = spyk<JobScheduler>(DefaultJobScheduler(jobRepoMock))
 
     private val config = BaseKJob.Configuration().apply {
     }
@@ -77,9 +92,11 @@ class BaseKJobSpec : ShouldSpec() {
     }
 
 
-    private fun newTestee(config: BaseKJob.Configuration) = autoClose(object : BaseKJob<BaseKJob.Configuration>(config), AutoCloseable {
+    private fun newTestee(config: BaseKJob.Configuration, clock: Clock = Clock.systemUTC()) = autoClose(object : BaseKJob<BaseKJob.Configuration>(config), AutoCloseable {
         override val jobRepository: JobRepository = jobRepoMock
         override val lockRepository: LockRepository = lockRepoMock
+        override val jobScheduler: JobScheduler = jobSchedulerMock
+        override val clock: Clock = clock
         override val millis: Long = 10
         override fun close() {
             shutdown()
@@ -106,16 +123,17 @@ class BaseKJobSpec : ShouldSpec() {
             val testee = newTestee(config)
             coEvery { lockRepoMock.ping(testee.id) } returns Lock(testee.id, Instant.now())
             coEvery { jobRepoMock.exist("my-test-id") } returns false
-            coEvery { jobRepoMock.findNext(emptySet(), setOf(JobStatus.RUNNING, JobStatus.ERROR), 50) } returns emptyFlow()
-            coEvery { jobRepoMock.save(settings) } returns sj
-            coEvery { jobRepoMock.update(sj.id, null, testee.id, JobStatus.RUNNING, null, 0) } returns true
-            coEvery { jobRepoMock.findNextOne(setOf("test-job"), setOf(JobStatus.CREATED)) } returns sj andThen null
+            coEvery { jobRepoMock.findNext(emptySet(), setOf(SCHEDULED, RUNNING, ERROR), 50) } returns emptyFlow()
+            coEvery { jobRepoMock.save(settings, null) } returns sj
+            coEvery { jobRepoMock.update(sj.id, null, testee.id, SCHEDULED, null, 0) } returns true
+            coEvery { jobRepoMock.update(sj.id, testee.id, testee.id, RUNNING, null, 0) } returns true
+            coEvery { jobRepoMock.findNextOne(setOf("test-job"), setOf(CREATED)) } returns sj andThen null
             coEvery { jobRepoMock.startProgress(sj.id) } returns true
             coEvery { jobRepoMock.setProgressMax(sj.id, 4) } returns true
             coEvery { jobRepoMock.stepProgress(sj.id) } returns true
             coEvery { jobRepoMock.completeProgress(sj.id) } returns true
             coEvery { jobRepoMock.get(sj.id) } returns sj
-            coEvery { jobRepoMock.update(sj.id, testee.id, null, JobStatus.COMPLETE, null, 1) } returns true
+            coEvery { jobRepoMock.update(sj.id, testee.id, null, COMPLETE, null, 1) } returns true
             testee.start()
             testee.register(TestJob) {
                 execute {
@@ -155,8 +173,67 @@ class BaseKJobSpec : ShouldSpec() {
                 props[it.y4] = listOf(true, false, true)
                 props[it.y5] = listOf("a", "b", "c")
             }
+            coVerify(timeout = 200) { jobSchedulerMock.schedule(settings) }
             coVerify(timeout = 200, exactly = 4) { jobRepoMock.stepProgress(sj.id) }
-            coVerify(timeout = 200) { jobRepoMock.update(sj.id, testee.id, null, JobStatus.COMPLETE, null, 1) }
+            coVerify(timeout = 200) { jobRepoMock.update(sj.id, testee.id, null, COMPLETE, null, 1) }
+        }
+
+        should("execute a delayed job as expected") {
+            val now = Instant.parse("2020-11-01T10:00:00.222222Z")
+            val clock = MutableClock(Clock.fixed(now, ZoneId.systemDefault()))
+            val settings1 = js("my-test-id-1")
+            val settings2 = js("my-test-id-2")
+            val sj1 = sj(settings = settings1)
+            val sj2 = sj(settings = settings2)
+            val testee = newTestee(config, clock)
+            coEvery { lockRepoMock.ping(testee.id) } returns Lock(testee.id, Instant.now())
+            coEvery { jobRepoMock.exist("my-test-id-1") } returns false
+            coEvery { jobRepoMock.exist("my-test-id-2") } returns false
+            coEvery { jobRepoMock.findNext(emptySet(), setOf(SCHEDULED, RUNNING, ERROR), 50) } returns emptyFlow()
+            coEvery { jobRepoMock.save(settings1, now.plusSeconds(60)) } returns sj1
+            coEvery { jobRepoMock.save(settings2, now.plusSeconds(25)) } returns sj2
+            coEvery { jobRepoMock.update(sj1.id, null, testee.id, SCHEDULED, null, 0) } returns true
+            coEvery { jobRepoMock.update(sj2.id, null, testee.id, SCHEDULED, null, 0) } returns true
+            coEvery { jobRepoMock.update(sj1.id, testee.id, testee.id, RUNNING, null, 0) } returns true
+            coEvery { jobRepoMock.update(sj2.id, testee.id, testee.id, RUNNING, null, 0) } returns true
+            coEvery { jobRepoMock.findNextOne(setOf("test-job"), setOf(CREATED)) } returns sj1 andThen sj2 andThen null
+            coEvery { jobRepoMock.startProgress(sj1.id) } returns true
+            coEvery { jobRepoMock.startProgress(sj2.id) } returns true
+            coEvery { jobRepoMock.setProgressMax(sj1.id, 4) } returns true
+            coEvery { jobRepoMock.setProgressMax(sj2.id, 4) } returns true
+            coEvery { jobRepoMock.stepProgress(sj1.id) } returns true
+            coEvery { jobRepoMock.stepProgress(sj2.id) } returns true
+            coEvery { jobRepoMock.completeProgress(sj1.id) } returns true
+            coEvery { jobRepoMock.completeProgress(sj2.id) } returns true
+            coEvery { jobRepoMock.get(sj1.id) } returns sj1
+            coEvery { jobRepoMock.get(sj2.id) } returns sj2
+            coEvery { jobRepoMock.update(sj1.id, testee.id, null, COMPLETE, null, 1) } returns true
+            coEvery { jobRepoMock.update(sj2.id, testee.id, null, COMPLETE, null, 1) } returns true
+            testee.start()
+            testee.register(TestJob) {
+                execute {
+                    setInitialMax(4)
+                    for (i in 0..3) {
+                        step()
+                    }
+                }
+            }
+            testee.schedule(TestJob, 1.minutes) {
+                jobId = "my-test-id-1"
+            }
+
+            testee.schedule(TestJob, Duration.ofSeconds(25)) {
+                jobId = "my-test-id-2"
+            }
+
+            clock.update(now.plusSeconds(120))
+
+            coVerify(timeout = 200) { jobSchedulerMock.schedule(settings1, now.plusSeconds(60)) }
+            coVerify(timeout = 200) { jobSchedulerMock.schedule(settings2, now.plusSeconds(25)) }
+            coVerify(timeout = 200, exactly = 4) { jobRepoMock.stepProgress(sj1.id) }
+            coVerify(timeout = 200, exactly = 4) { jobRepoMock.stepProgress(sj2.id) }
+            coVerify(timeout = 200) { jobRepoMock.update(sj1.id, testee.id, null, COMPLETE, null, 1) }
+            coVerify(timeout = 200) { jobRepoMock.update(sj2.id, testee.id, null, COMPLETE, null, 1) }
         }
 
         should("fail to schedule job if the same id has already been used") {
@@ -165,8 +242,8 @@ class BaseKJobSpec : ShouldSpec() {
             val testee = newTestee(config)
             coEvery { lockRepoMock.ping(testee.id) } returns Lock(testee.id, Instant.now())
             coEvery { jobRepoMock.exist("my-test-id") } returns true
-            coEvery { jobRepoMock.findNext(emptySet(), setOf(JobStatus.RUNNING, JobStatus.ERROR), 50) } returns emptyFlow()
-            coEvery { jobRepoMock.findNextOne(setOf("test-job"), setOf(JobStatus.CREATED)) } returns sj andThen null
+            coEvery { jobRepoMock.findNext(emptySet(), setOf(RUNNING, ERROR), 50) } returns emptyFlow()
+            coEvery { jobRepoMock.findNextOne(setOf("test-job"), setOf(CREATED)) } returns sj andThen null
             testee.start()
             val latch = CountDownLatch(1)
             testee.register(TestJob) {
