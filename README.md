@@ -15,6 +15,7 @@ A coroutine based persistent background scheduler written in Kotlin.
 * Other instances will restart the work of a crashed one
 * Pool for blocking and non-blocking jobs
 * Pool size can be defined to go easy on resources
+* Add new features through your own [extensions](#extensions)
 
 ## Installation
 
@@ -121,6 +122,43 @@ kjob(Mongo) {
     expireLockInMinutes = 5L // using the TTL feature of mongoDB to expire a lock
 }.start()
 ```
+
+## Extensions
+
+If you want to add new features to kjob you can do so with a kjob extension.
+
+```kotlin
+object ShowIdExtension : ExtensionId<ShowIdEx>
+
+class ShowIdEx(private val config: Configuration, private val kjobConfig: BaseKJob.Configuration, private val kjob: BaseKJob<BaseKJob.Configuration>) : BaseExtension(ShowIdExtension) {
+    class Configuration : BaseExtension.Configuration()
+
+    fun showId() {
+        // here you have access to some internal properties
+        println("KJob has the following id: ${kjob.id}")
+    }
+}
+
+object ShowIdModule : ExtensionModule<ShowIdEx, ShowIdEx.Configuration, BaseKJob<BaseKJob.Configuration>, BaseKJob.Configuration> {
+    override val id: ExtensionId<ShowIdEx> = ShowIdExtension
+    override fun create(configure: ShowIdEx.Configuration.() -> Unit, kjobConfig: BaseKJob.Configuration): (BaseKJob<BaseKJob.Configuration>) -> ShowIdEx {
+        return { ShowIdEx(ShowIdEx.Configuration().apply(configure), kjobConfig, it) }
+    }
+}
+
+fun main() {
+    val kjob = kjob(InMem) {
+        extension(ShowIdModule) // register our extension and bind it to the kjob life cycle
+    }.start()
+
+    kjob(ShowIdExtension).showId() // access our new extension method
+    
+    kjob.shutdown()
+}
+
+```
+
+To see a more advanced version take a look at this [example](https://github.com/justwrote/kjob/blob/master/kjob-example/src/main/kotlin/Example_Extension.kt)
 
 ## Roadmap
 

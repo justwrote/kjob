@@ -6,7 +6,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.asCoroutineDispatcher
 import java.util.concurrent.*
 
-interface KJobExecutors {
+interface JobExecutors {
     val executorService: ScheduledExecutorService
     val dispatchers: Map<JobExecutionType, DispatcherWrapper>
 
@@ -16,7 +16,7 @@ interface KJobExecutors {
     }
 }
 
-internal class DefaultKJobExecutors(config: KJob.Configuration) : KJobExecutors {
+internal class DefaultJobExecutors(config: KJob.Configuration) : JobExecutors {
     override val executorService: ScheduledExecutorService by lazy { ScheduledThreadPoolExecutor(3) }
     override val dispatchers: Map<JobExecutionType, DispatcherWrapper> = mapOf(
             JobExecutionType.BLOCKING to object : DispatcherWrapper {

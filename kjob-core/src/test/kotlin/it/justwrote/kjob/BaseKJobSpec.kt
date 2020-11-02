@@ -7,6 +7,9 @@ import io.kotest.matchers.shouldBe
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import it.justwrote.kjob.extension.BaseExtension
+import it.justwrote.kjob.extension.ExtensionId
+import it.justwrote.kjob.extension.ExtensionModule
 import it.justwrote.kjob.internal.scheduler.js
 import it.justwrote.kjob.internal.scheduler.sj
 import it.justwrote.kjob.job.JobStatus
@@ -45,7 +48,36 @@ class BaseKJobSpec : ShouldSpec() {
     private val config = BaseKJob.Configuration().apply {
     }
 
-    private fun newTestee() = autoClose(object : BaseKJob<BaseKJob.Configuration>(config), AutoCloseable {
+    object TestExtension : ExtensionId<TestEx>
+
+    class TestEx(val config: Configuration, private val kjobConfig: BaseKJob.Configuration, private val kjob: BaseKJob<BaseKJob.Configuration>) : BaseExtension(TestExtension) {
+        class Configuration : BaseExtension.Configuration() {
+            var start = 0
+            var stop = 0
+        }
+
+        fun test(): String {
+            return "Hello Extension"
+        }
+
+        override fun start() {
+            config.start += 1
+        }
+
+        override fun shutdown() {
+            config.stop += 1
+        }
+    }
+
+    object TestModule : ExtensionModule<TestEx, TestEx.Configuration, BaseKJob<BaseKJob.Configuration>, BaseKJob.Configuration> {
+        override val id: ExtensionId<TestEx> = TestExtension
+        override fun create(configure: TestEx.Configuration.() -> Unit, kjobConfig: BaseKJob.Configuration): (BaseKJob<BaseKJob.Configuration>) -> TestEx {
+            return { TestEx(TestEx.Configuration().apply(configure), kjobConfig, it) }
+        }
+    }
+
+
+    private fun newTestee(config: BaseKJob.Configuration) = autoClose(object : BaseKJob<BaseKJob.Configuration>(config), AutoCloseable {
         override val jobRepository: JobRepository = jobRepoMock
         override val lockRepository: LockRepository = lockRepoMock
         override val millis: Long = 10
@@ -71,7 +103,7 @@ class BaseKJobSpec : ShouldSpec() {
             )
             val settings = js("my-test-id", props = map)
             val sj = sj(settings = settings)
-            val testee = newTestee()
+            val testee = newTestee(config)
             coEvery { lockRepoMock.ping(testee.id) } returns Lock(testee.id, Instant.now())
             coEvery { jobRepoMock.exist("my-test-id") } returns false
             coEvery { jobRepoMock.findNext(emptySet(), setOf(JobStatus.RUNNING, JobStatus.ERROR), 50) } returns emptyFlow()
@@ -130,7 +162,7 @@ class BaseKJobSpec : ShouldSpec() {
         should("fail to schedule job if the same id has already been used") {
             val settings = js("my-test-id")
             val sj = sj(settings = settings)
-            val testee = newTestee()
+            val testee = newTestee(config)
             coEvery { lockRepoMock.ping(testee.id) } returns Lock(testee.id, Instant.now())
             coEvery { jobRepoMock.exist("my-test-id") } returns true
             coEvery { jobRepoMock.findNext(emptySet(), setOf(JobStatus.RUNNING, JobStatus.ERROR), 50) } returns emptyFlow()
@@ -152,11 +184,40 @@ class BaseKJobSpec : ShouldSpec() {
         }
 
         should("not allow to start multiple times") {
-            val testee = newTestee()
+            val testee = newTestee(config)
             testee.start()
             shouldThrowMessage("kjob has already been started") {
                 testee.start()
             }
+        }
+
+        should("register a new extension") {
+            val testee = newTestee(BaseKJob.Configuration().apply {
+                extension(TestModule)
+            })
+
+            val result = testee(TestExtension).test()
+
+            result shouldBe "Hello Extension"
+        }
+
+        should("start and shutdown an extension") {
+            val testee = newTestee(BaseKJob.Configuration().apply {
+                extension(TestModule)
+            })
+
+            testee(TestExtension).config.start shouldBe 0
+            testee(TestExtension).config.stop shouldBe 0
+
+            testee.start()
+
+            testee(TestExtension).config.start shouldBe 1
+            testee(TestExtension).config.stop shouldBe 0
+
+            testee.shutdown()
+
+            testee(TestExtension).config.start shouldBe 1
+            testee(TestExtension).config.stop shouldBe 1
         }
     }
 }

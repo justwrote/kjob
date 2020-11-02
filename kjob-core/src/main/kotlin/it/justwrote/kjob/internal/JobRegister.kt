@@ -9,7 +9,7 @@ import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentMap
 
-internal interface JobRegister {
+interface JobRegister {
     fun <J : Job> register(name: J, block: RegisterContext<J>.(J) -> KJobFunctions<J>): Unit
     fun jobs(executionType: JobExecutionType): Set<String>
     fun get(name: String): RunnableJob

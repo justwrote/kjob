@@ -3,6 +3,8 @@ package it.justwrote.kjob
 import it.justwrote.kjob.dsl.KJobFunctions
 import it.justwrote.kjob.dsl.RegisterContext
 import it.justwrote.kjob.dsl.ScheduleContext
+import it.justwrote.kjob.extension.Extension
+import it.justwrote.kjob.extension.ExtensionId
 import it.justwrote.kjob.job.JobExecutionType
 
 interface KJob {
@@ -51,4 +53,6 @@ interface KJob {
      * @param job the job that has been registered before
      */
     suspend fun <J : Job> schedule(job: J, block: ScheduleContext<J>.(J) -> Unit = {}): KJob
+
+    operator fun <Ex : Extension, ExId : ExtensionId<Ex>> invoke(extensionId: ExId): Ex
 }

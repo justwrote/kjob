@@ -11,14 +11,14 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.util.concurrent.CountDownLatch
 
-class DefaultKJobExecutorsSpec : ShouldSpec() {
+class DefaultJobExecutorsSpec : ShouldSpec() {
 
     val config = KJob.Configuration().apply {
         blockingMaxJobs = 1
         nonBlockingMaxJobs = 1
     }
 
-    private fun newTestee(): KJobExecutors = autoClose(object : AutoCloseable, KJobExecutors by DefaultKJobExecutors(config) {
+    private fun newTestee(): JobExecutors = autoClose(object : AutoCloseable, JobExecutors by DefaultJobExecutors(config) {
         override fun close() {
             shutdown()
         }

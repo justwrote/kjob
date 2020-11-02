@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory
 import java.util.*
 import kotlin.coroutines.CoroutineContext
 
-internal interface JobExecutor {
+interface JobExecutor {
     fun execute(runnableJob: RunnableJob, scheduledJob: ScheduledJob, jobRepository: JobRepository)
     fun canExecute(executionType: JobExecutionType): Boolean
 }

@@ -3,6 +3,9 @@ package it.justwrote.kjob
 import it.justwrote.kjob.dsl.KJobFunctions
 import it.justwrote.kjob.dsl.RegisterContext
 import it.justwrote.kjob.dsl.ScheduleContext
+import it.justwrote.kjob.extension.Extension
+import it.justwrote.kjob.extension.ExtensionId
+import it.justwrote.kjob.extension.ExtensionModule
 import it.justwrote.kjob.internal.*
 import it.justwrote.kjob.internal.scheduler.JobCleanupScheduler
 import it.justwrote.kjob.internal.scheduler.JobService
@@ -13,14 +16,15 @@ import kotlinx.coroutines.*
 import org.slf4j.LoggerFactory
 import java.util.*
 
-abstract class BaseKJob<Config : BaseKJob.Configuration>(protected val config: Config) : KJob {
-
+abstract class BaseKJob<Config : BaseKJob.Configuration>(val config: Config) : KJob {
     private val logger = LoggerFactory.getLogger(javaClass)
     private var isRunning = false
 
-    protected abstract val jobRepository: JobRepository
-    protected abstract val lockRepository: LockRepository
-    protected open val executors: KJobExecutors = DefaultKJobExecutors(config)
+    private val extensions: Map<ExtensionId<*>, Extension> = config.extensions.mapValues { it.value(this) }
+
+    abstract val jobRepository: JobRepository
+    abstract val lockRepository: LockRepository
+
     internal open val millis: Long = 1000 // allow override for testing
 
     val id: UUID = UUID.randomUUID()
@@ -53,28 +57,48 @@ abstract class BaseKJob<Config : BaseKJob.Configuration>(protected val config: C
          */
         var cleanupSize: Int = 50
 
+        internal val extensions: MutableMap<ExtensionId<*>, (KJob) -> Extension> = mutableMapOf()
+
+        @Suppress("UNCHECKED_CAST")
+        fun <Ex : Extension, ExConfig : Extension.Configuration, Kj : KJob, KjConfig : Configuration> KjConfig.extension(
+                module: ExtensionModule<Ex, ExConfig, Kj, KjConfig>,
+                configure: ExConfig.() -> Unit = {}
+        ): Unit {
+            val fn = module.create(configure, this)
+            extensions[module.id] = fn as (KJob) -> Extension
+        }
     }
+
+    @Suppress("UNCHECKED_CAST")
+    override fun <Ex : Extension, ExId : ExtensionId<Ex>> invoke(extensionId: ExId): Ex =
+            extensions[extensionId] as? Ex ?: throw IllegalStateException("Extension '${extensionId.name()}' not found")
 
     private val handler = CoroutineExceptionHandler { _, throwable -> config.exceptionHandler(throwable) }
 
-    private val kjobScope: CoroutineScope by lazy {
-        CoroutineScope(SupervisorJob() + executors.executorService.asCoroutineDispatcher() + CoroutineName("kjob[$id]") + handler)
-    }
+    fun jobScheduler(): JobScheduler = jobScheduler
+    fun jobExecutors(): JobExecutors = jobExecutors
+    fun jobRegister(): JobRegister = jobRegister
+    fun jobExecutor(): JobExecutor = jobExecutor
 
-    private val jobScheduler: JobScheduler by lazy { DefaultJobScheduler(jobRepository) }
-    private val jobExecutor: JobExecutor by lazy { DefaultJobExecutor(id, executors.dispatchers, kjobScope.coroutineContext) }
-    private val jobRegister: JobRegister by lazy { DefaultJobRegister(config) }
+    internal open val jobExecutors: JobExecutors by lazy { DefaultJobExecutors(config) }
+    internal open val jobScheduler: JobScheduler by lazy { DefaultJobScheduler(jobRepository) }
+    internal open val jobRegister: JobRegister by lazy { DefaultJobRegister(config) }
+    internal open val jobExecutor: JobExecutor by lazy { DefaultJobExecutor(id, jobExecutors.dispatchers, kjobScope.coroutineContext) }
+
+    private val kjobScope: CoroutineScope by lazy {
+        CoroutineScope(SupervisorJob() + jobExecutors.executorService.asCoroutineDispatcher() + CoroutineName("kjob[$id]") + handler)
+    }
 
     private val keepAliveScheduler: KeepAliveScheduler by lazy {
         KeepAliveScheduler(
-                executors.executorService,
+                jobExecutors.executorService,
                 config.keepAliveExecutionPeriodInSeconds * millis,
                 lockRepository
         )
     }
     private val cleanupScheduler: JobCleanupScheduler by lazy {
         JobCleanupScheduler(
-                executors.executorService,
+                jobExecutors.executorService,
                 config.cleanupPeriodInSeconds * millis,
                 jobRepository,
                 lockRepository,
@@ -83,7 +107,7 @@ abstract class BaseKJob<Config : BaseKJob.Configuration>(protected val config: C
     }
     private val jobService: JobService by lazy {
         JobService(
-                executors.executorService,
+                jobExecutors.executorService,
                 config.jobExecutionPeriodInSeconds * millis,
                 id,
                 kjobScope.coroutineContext,
@@ -101,6 +125,7 @@ abstract class BaseKJob<Config : BaseKJob.Configuration>(protected val config: C
         jobService.start()
         cleanupScheduler.start()
         keepAliveScheduler.start(id)
+        extensions.forEach { (_, extension) -> extension.start() }
         return this
     }
 
@@ -118,7 +143,8 @@ abstract class BaseKJob<Config : BaseKJob.Configuration>(protected val config: C
         cleanupScheduler.shutdown()
         keepAliveScheduler.shutdown()
         jobService.shutdown()
+        extensions.forEach { (_, extension) -> extension.shutdown() }
 
-        executors.shutdown()
+        jobExecutors.shutdown()
     }
 }
