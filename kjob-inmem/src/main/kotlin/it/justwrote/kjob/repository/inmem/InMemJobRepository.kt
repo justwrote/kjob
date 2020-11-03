@@ -21,12 +21,12 @@ internal class InMemJobRepository(private val clock: Clock) : JobRepository {
 
     override suspend fun exist(jobId: String): Boolean = map.values.find { it.settings.id == jobId } != null
 
-    override suspend fun save(jobSettings: JobSettings): ScheduledJob {
+    override suspend fun save(jobSettings: JobSettings, runAt: Instant?): ScheduledJob {
         if (exist(jobSettings.id)) {
             throw IllegalArgumentException("Job[${jobSettings.id}] does already exist")
         }
         val now = Instant.now(clock)
-        val sj = ScheduledJob(newId(), JobStatus.CREATED, null, 0, null, now, now, jobSettings, JobProgress(0))
+        val sj = ScheduledJob(newId(), JobStatus.CREATED, runAt, null, 0, null, now, now, jobSettings, JobProgress(0))
         map[sj.id] = sj
         return sj
     }

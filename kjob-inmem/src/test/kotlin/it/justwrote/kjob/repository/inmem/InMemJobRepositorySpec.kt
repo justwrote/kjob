@@ -24,9 +24,9 @@ class InMemJobRepositorySpec : JobRepositoryContract() {
         should("only allow unique job ids") {
             val job = js()
 
-            testee.save(job)
+            testee.save(job, null)
             shouldThrow<IllegalArgumentException> {
-                testee.save(job)
+                testee.save(job, null)
             }
         }
 

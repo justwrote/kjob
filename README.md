@@ -4,11 +4,12 @@
 [![GitHub Build Status](https://img.shields.io/github/workflow/status/justwrote/kjob/CI/master?style=flat)](https://github.com/justwrote/kjob/actions?query=workflow%3ACI)
 [![Coverage Status](https://coveralls.io/repos/github/justwrote/kjob/badge.svg)](https://coveralls.io/github/justwrote/kjob)
 
-A coroutine based persistent background scheduler written in Kotlin.
+A coroutine based persistent background (cron) scheduler written in Kotlin.
 
 ## Features
 
 * Persist scheduled jobs (e.g. mongoDB)
+* [Cron](#cron) jobs 
 * Nice DSL for registering and scheduling jobs
 * Multiple instances possible
 * Failed jobs will be rescheduled
@@ -67,6 +68,12 @@ kjob.register(OrderCreatedEmail) {
 kjob.schedule(OrderCreatedEmail) {
     props[it.recipient] = "customer@example.com"
 }
+
+// or provide some delay for the scheduling
+kjob.schedule(OrderCreatedEmail, 5.seconds) {
+    props[it.recipient] = "customer@example.com"
+}
+// this runs the job not immediately but - you may guess it already - in 5 seconds!
 ```
 
 For more details please take a look at the [examples](https://github.com/justwrote/kjob/blob/master/kjob-example/src/main/kotlin)
@@ -146,19 +153,54 @@ object ShowIdModule : ExtensionModule<ShowIdEx, ShowIdEx.Configuration, BaseKJob
     }
 }
 
-fun main() {
-    val kjob = kjob(InMem) {
-        extension(ShowIdModule) // register our extension and bind it to the kjob life cycle
-    }.start()
+// ...
 
-    kjob(ShowIdExtension).showId() // access our new extension method
-    
-    kjob.shutdown()
+val kjob = kjob(InMem) {
+    extension(ShowIdModule) // register our extension and bind it to the kjob life cycle
 }
 
+// ...
+
+kjob(ShowIdExtension).showId() // access our new extension method
 ```
 
 To see a more advanced version take a look at this [example](https://github.com/justwrote/kjob/blob/master/kjob-example/src/main/kotlin/Example_Extension.kt)
+
+## Cron
+
+With kjob you are also able to schedule jobs with the familiar cron expression. To get Kron - the name of the extension to enable Cron scheduling in kjob - you need to add the following dependency:
+
+```groovy
+dependencies {
+  implementation "it.justwrote:kjob-kron:<version>"
+}
+``` 
+
+After that you can schedule cron jobs as easy as every other job with kjob.
+
+```kotlin
+// define a Kron job with a name and a cron expression (e.g. 5 seconds)
+object PrintStuff : KronJob("print-stuff", "*/5 * * ? * * *")
+
+// ...
+
+val kjob = kjob(InMem) {
+    extension(KronModule) // enable the Kron extension
+}
+
+// ...
+
+// define the executed code
+kjob(Kron).kron(PrintStuff) {
+    maxRetries = 3 // and you can access the already familiar settings you are used to
+    execute {
+        println("${Instant.now()}: executing kron task '${it.name}' with jobId '$jobId'")
+    }
+}
+```
+
+You can find more in this [example](https://github.com/justwrote/kjob/blob/master/kjob-example/src/main/kotlin/Example_Kron.kt)
+
 
 ## Roadmap
 
@@ -166,7 +208,6 @@ Here is an unordered list of features that I would like to see in kjob. If you
 consider one of them important please open an issue.
 
 - Priority support
-- Cron features
 - Backoff algorithm for failed jobs
 - REST API
 - Dashboard

@@ -9,7 +9,7 @@ internal class KeepAliveScheduler(
         executorService: ScheduledExecutorService,
         period: Long,
         private val lockRepository: LockRepository
-) : SimpleScheduler(executorService, period) {
+) : SimplePeriodScheduler(executorService, period) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
     private suspend fun iAmAlive(id: UUID) {

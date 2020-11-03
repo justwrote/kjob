@@ -1,7 +1,7 @@
 package it.justwrote.kjob.dsl
 
+import it.justwrote.kjob.BaseJob
 import it.justwrote.kjob.Job
-import it.justwrote.kjob.internal.utils.Generated
 import it.justwrote.kjob.job.JobProps
 import it.justwrote.kjob.job.ScheduledJob
 import it.justwrote.kjob.repository.JobRepository
@@ -10,14 +10,13 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import kotlin.coroutines.CoroutineContext
 
-@JobDslMarker
-class JobContext<J : Job> internal constructor(
+open class JobContext<J : BaseJob> internal constructor(
         override val coroutineContext: CoroutineContext,
-        val props: JobProps<J>,
         scheduledJob: ScheduledJob,
         private val jobRepository: JobRepository
 ) : CoroutineScope {
     private val internalJobId = scheduledJob.id
+    val jobId = scheduledJob.settings.id
     val logger: Logger = LoggerFactory.getLogger("it.justwrote.kjob.${scheduledJob.settings.name}#${scheduledJob.settings.id}")
 
     private var stepProgress = scheduledJob.progress.step
@@ -47,30 +46,12 @@ class JobContext<J : Job> internal constructor(
     }
 
     internal suspend fun scheduledJob(): ScheduledJob = jobRepository.get(internalJobId)!!
-
-    @Generated
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is JobContext<*>) return false
-
-        if (coroutineContext != other.coroutineContext) return false
-        if (props != other.props) return false
-        if (jobRepository != other.jobRepository) return false
-        if (internalJobId != other.internalJobId) return false
-        if (logger != other.logger) return false
-        if (stepProgress != other.stepProgress) return false
-
-        return true
-    }
-
-    @Generated
-    override fun hashCode(): Int {
-        var result = coroutineContext.hashCode()
-        result = 31 * result + props.hashCode()
-        result = 31 * result + jobRepository.hashCode()
-        result = 31 * result + internalJobId.hashCode()
-        result = 31 * result + logger.hashCode()
-        result = 31 * result + stepProgress.hashCode()
-        return result
-    }
 }
+
+@JobDslMarker
+class JobContextWithProps<J : Job> internal constructor(
+        coroutineContext: CoroutineContext,
+        val props: JobProps<J>,
+        scheduledJob: ScheduledJob,
+        jobRepository: JobRepository
+) : JobContext<J>(coroutineContext, scheduledJob, jobRepository)

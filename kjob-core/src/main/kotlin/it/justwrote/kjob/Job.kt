@@ -1,6 +1,12 @@
 package it.justwrote.kjob
 
-abstract class Job(val name: String) {
+interface BaseJob {
+    val name: String
+}
+
+abstract class KronJob(override val name: String, val cronExpression: String): BaseJob
+
+abstract class Job(override val name: String): BaseJob {
     protected fun <J : Job> J.integer(name: String): Prop<J, Int> = Prop(name)
     protected fun <J : Job> J.double(name: String): Prop<J, Double> = Prop(name)
     protected fun <J : Job> J.long(name: String): Prop<J, Long> = Prop(name)

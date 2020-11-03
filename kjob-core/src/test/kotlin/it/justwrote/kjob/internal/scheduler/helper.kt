@@ -1,10 +1,10 @@
 package it.justwrote.kjob.internal.scheduler
 
-import io.kotest.core.spec.TestConfiguration
-import io.kotest.core.spec.autoClose
+import io.kotest.core.TestConfiguration
 import it.justwrote.kjob.job.JobProgress
 import it.justwrote.kjob.job.JobSettings
 import it.justwrote.kjob.job.JobStatus
+import it.justwrote.kjob.job.JobStatus.*
 import it.justwrote.kjob.job.ScheduledJob
 import it.justwrote.kjob.repository.now
 import it.justwrote.kjob.utils.nextAlphanumericString
@@ -29,7 +29,8 @@ fun jp(
 
 fun sj(
         id: String = UUID.randomUUID().toString(),
-        status: JobStatus = JobStatus.CREATED,
+        status: JobStatus = CREATED,
+        runAt: Instant? = null,
         message: String? = null,
         retries: Int = 0,
         kjobId: UUID? = null,
@@ -40,6 +41,7 @@ fun sj(
 ) = ScheduledJob(
         id,
         status,
+        runAt,
         message,
         retries,
         kjobId,

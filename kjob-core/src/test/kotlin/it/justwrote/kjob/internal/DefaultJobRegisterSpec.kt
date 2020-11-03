@@ -9,7 +9,7 @@ import io.mockk.every
 import io.mockk.mockk
 import it.justwrote.kjob.Job
 import it.justwrote.kjob.KJob
-import it.justwrote.kjob.dsl.JobContext
+import it.justwrote.kjob.dsl.JobContextWithProps
 import it.justwrote.kjob.job.JobExecutionType
 import it.justwrote.kjob.job.JobProps
 import it.justwrote.kjob.job.ScheduledJob
@@ -22,36 +22,33 @@ import java.util.concurrent.CountDownLatch
 class DefaultJobRegisterSpec : ShouldSpec() {
 
     init {
-        val config = KJob.Configuration()
 
         should("return empty set if there is no job defined for given execution type") {
-            val testee = DefaultJobRegister(config)
+            val testee = DefaultJobRegister()
             testee.jobs(JobExecutionType.BLOCKING).shouldBeEmpty()
             testee.jobs(JobExecutionType.NON_BLOCKING).shouldBeEmpty()
         }
 
         should("throw an exception if no runnable job has been found for given name") {
-            val testee = DefaultJobRegister(config)
+            val testee = DefaultJobRegister()
             shouldThrow<NoSuchElementException> {
                 testee.get("unknown-job")
             }
         }
 
         should("register a runnable job with a provided execution block") {
-            val testee = DefaultJobRegister(KJob.Configuration().apply {
-                defaultJobExecutor = JobExecutionType.NON_BLOCKING
-                maxRetries = 12345
-            })
+            val testee = DefaultJobRegister()
             val testJob = object : Job("test-job") {}
             val latch = CountDownLatch(1)
-            testee.register(testJob) {
+            val runnableJob = DefaultRunnableJob(testJob, KJob.Configuration()) {
                 execute {
                     latch.countDown()
                 }
             }
-            val runnableJob = testee.get("test-job")
-            runnableJob.executionType shouldBe JobExecutionType.NON_BLOCKING
-            runnableJob.maxRetries shouldBe 12345
+            testee.register(runnableJob)
+
+            val actual = testee.get("test-job")
+            actual shouldBe runnableJob
             val sjMock = mockk<ScheduledJob>()
             val jobRepositoryMock = mockk<JobRepository>()
             every { sjMock.id } returns "my-internal-id"
@@ -62,7 +59,7 @@ class DefaultJobRegisterSpec : ShouldSpec() {
             coEvery { jobRepositoryMock.get("my-internal-id") } returns sjMock
             coEvery { jobRepositoryMock.setProgressMax("my-internal-id", 0) } returns true
             coEvery { jobRepositoryMock.completeProgress("my-internal-id") } returns true
-            val result = runnableJob.execute(JobContext<Job>(
+            val result = runnableJob.execute(JobContextWithProps<Job>(
                     Dispatchers.Unconfined,
                     JobProps(emptyMap()),
                     sjMock,

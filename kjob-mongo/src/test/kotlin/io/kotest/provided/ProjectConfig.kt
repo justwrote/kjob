@@ -4,9 +4,9 @@ import com.mongodb.reactivestreams.client.MongoClient
 import com.mongodb.reactivestreams.client.MongoClients
 import de.flapdoodle.embed.mongo.Command
 import de.flapdoodle.embed.mongo.MongodStarter
-import de.flapdoodle.embed.mongo.config.MongodConfigBuilder
+import de.flapdoodle.embed.mongo.config.Defaults
+import de.flapdoodle.embed.mongo.config.MongodConfig
 import de.flapdoodle.embed.mongo.config.Net
-import de.flapdoodle.embed.mongo.config.RuntimeConfigBuilder
 import de.flapdoodle.embed.mongo.distribution.Version
 import de.flapdoodle.embed.process.runtime.Network
 import io.kotest.core.config.AbstractProjectConfig
@@ -23,12 +23,10 @@ object ProjectConfig : AbstractProjectConfig() {
 
         val logger = LoggerFactory.getLogger(javaClass.name)
 
-        val runtimeConfig = RuntimeConfigBuilder()
-                .defaultsWithLogger(Command.MongoD, logger)
-                .build()
+        val runtimeConfig = Defaults.runtimeConfigFor(Command.MongoD, logger).build()
 
         val starter = MongodStarter.getInstance(runtimeConfig)
-        val exe = starter.prepare(MongodConfigBuilder()
+        val exe = starter.prepare(MongodConfig.builder()
                 .version(Version.Main.PRODUCTION)
                 .net(Net(host, port, Network.localhostIsIPv6()))
                 .build())
@@ -40,7 +38,7 @@ object ProjectConfig : AbstractProjectConfig() {
     fun newMongoClient(): MongoClient {
         val host = mongo.value.second.config.net().bindIp
         val port = mongo.value.second.config.net().port
-        return MongoClients.create("mongodb://$host:$port")
+        return MongoClients.create("mongodb://$host:$port/?uuidRepresentation=STANDARD")
     }
 
     override fun afterAll() {

@@ -1,11 +1,11 @@
 package it.justwrote.kjob.dsl
 
-import it.justwrote.kjob.Job
+import it.justwrote.kjob.BaseJob
 import it.justwrote.kjob.KJob
 import it.justwrote.kjob.job.JobExecutionType
 
 @JobDslMarker
-class RegisterContext<J : Job> internal constructor(configuration: KJob.Configuration) {
+class JobRegisterContext<J : BaseJob, JC : JobContext<J>> internal constructor(configuration: KJob.Configuration) {
     /**
      * Override the default execution type defined in the configuration
      */
@@ -19,7 +19,7 @@ class RegisterContext<J : Job> internal constructor(configuration: KJob.Configur
     /**
      * Defines the code that should be executed when the job is scheduled
      */
-    fun execute(block: suspend JobContext<J>.() -> Unit): KJobFunctions<J> {
+    fun execute(block: suspend JC.() -> Unit): KJobFunctions<J, JC> {
         return KJobFunctions(block)
     }
 }
