@@ -30,6 +30,7 @@ repositories {
 dependencies {
   implementation "it.justwrote:kjob-core:<version>"
   implementation "it.justwrote:kjob-mongo:<version>" // for mongoDB persistence
+  testImplementation "it.justwrote:kjob-inmem:<version>" // for in-memory 'persistence' (e.g. tests)
 }
 ```
 
